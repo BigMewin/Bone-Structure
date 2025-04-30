@@ -319,3 +319,105 @@ Saved features: features_UHR_ROI_7_threshold_-600_800.npy
 ...
 Processing complete.
 ```
+
+# Evaluation of Extracted Features
+
+This Jupyter notebook (`Evaluation.ipynb`) is designed to evaluate the texture features extracted from bone ROI data using PyRadiomics. It compares feature matrices against morphometric ground truth, performs correlation analysis, dimensionality reduction, and generates visualizations.
+
+---
+
+## Requirements
+
+Ensure you have the following Python packages installed:
+
+```bash
+pip install numpy pandas matplotlib seaborn scikit-learn
+```
+
+---
+
+## What the Notebook Does
+
+The notebook includes the following steps:
+
+1. **Load Feature Data**
+   - Loads `.npy` files containing `features_matrix` and `feature_names` from each threshold folder.
+   - Loads morphometric metrics (e.g., BV/TV, Tb.Th) from a CSV or text file.
+
+2. **Data Preprocessing**
+   - Concatenates feature matrices across thresholds or ROIs.
+   - Optionally removes outliers or normalizes features.
+
+3. **Correlation Analysis**
+   - Computes Pearson correlation between features and target metrics.
+   - Plots correlation heatmaps and scatter plots.
+
+4. **Dimensionality Reduction**
+   - Applies Lasso or PCA to reduce feature space.
+   - Identifies important features per target metric.
+
+5. **Model Evaluation**
+   - Trains regression models (e.g., linear regression or SVR) to predict morphometric metrics from texture features.
+   - Reports evaluation metrics like MAE, MSE, R², and CCC.
+
+6. **Visualization**
+   - Generates scatter plots of predicted vs. actual values.
+   - Visualizes feature importance and residuals.
+
+---
+
+## How to Use
+
+1. Launch Jupyter Notebook:
+   ```bash
+   jupyter notebook
+   ```
+
+2. Open `Evaluation.ipynb`.
+
+3. Update the following:
+   - Paths to your `features_matrix.npy`, `feature_names.npy`, and metric CSV file.
+   - ROI ranges or filtering criteria.
+   - Metric column names if different from default (e.g., `['BvTv', 'Tb.Th', 'Tb.Sp']`).
+
+4. Run the cells sequentially.
+
+---
+
+## Input Files Required
+
+- `features_matrix.npy`: Extracted features (N_ROIs × N_features)
+- `feature_names.npy`: List of feature names
+- `metrics.csv`: Morphometric ground truth (N_ROIs × N_metrics)
+
+Example folder structure:
+
+```
+project/
+│
+├── threshold_folder/
+│   ├── features_matrix.npy
+│   ├── feature_names.npy
+│
+├── Evaluation.ipynb
+├── metrics.csv
+```
+
+---
+
+## Output
+
+- Correlation matrices and heatmaps
+- Plots showing best-correlated features
+- Model performance scores
+- Feature importance rankings
+
+---
+
+## Notes
+
+- Ensure the order of ROIs in `features_matrix` and `metrics.csv` matches.
+- You can modify the notebook to loop across multiple thresholds or combine them.
+
+---
+
