@@ -1,0 +1,539 @@
+clear;
+addpath('D:\d_users\Yuchen\HRPQCT_UHR_NR\071_F221272_HRPQCT\TrabecularMetricPackage_Example\BoneMetricCalculationsPackage\scripts')
+nii = load_nii('00000389 - PF_upper_half.nii');
+img = nii.img;
+%ShowVpxGUI(img);
+
+% Extract the dimensions of the image
+[height, width, num_slices] = size(img);
+% Initialize the segmented image stack
+segmented_img_stack = false(size(img));
+
+bone_threshold = 3000;
+
+% Process each slice individually
+for sliceIdx = 1:num_slices
+    % Extract the current slice
+    current_slice = img(:,:,sliceIdx);
+
+    % Segment potential bone regions based on the threshold
+    bone_mask = current_slice > bone_threshold;
+
+    % Perform morphological closing to close gaps in the bone region
+    % Adjust the size of the structuring element as necessary
+    se = strel('disk', 10);
+    closed_bone_mask = imclose(bone_mask, se);
+    
+    % Fill in holes within the regions to solidify the bone
+    solid_bone_mask = imfill(closed_bone_mask, 'holes');
+
+    % Keep only the largest connected component (assuming it's the bone)
+    CC = bwconncomp(solid_bone_mask);
+    numPixels = cellfun(@numel, CC.PixelIdxList);
+    [biggest, idx] = max(numPixels);
+    if ~isempty(idx)
+        bone_only_mask = false(size(solid_bone_mask));
+        bone_only_mask(CC.PixelIdxList{idx}) = true;
+        segmented_img_stack(:,:,sliceIdx) = bone_only_mask;
+    end
+end
+
+% Convert the logical stack to uint8 for visualization
+segmented_img_stack_uint8 = uint8(segmented_img_stack) * 255;
+
+% Display the segmented image stack using ShowVpxGUI
+%ShowVpxGUI(segmented_img_stack_uint8);
+% Define the pixel size and radius for the ROI
+pixel_size_mm = 0.0607;  % Pixel size in millimeters
+%radius_mm = 5.5;         % Radius in millimeters
+radius_mm = 3;  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Convert the radius from millimeters to pixels
+radius_pixels = radius_mm / pixel_size_mm;
+
+% Find central points within the ROIs on the segmented image stack
+central_points = find_central_points(segmented_img_stack_uint8, pixel_size_mm, radius_mm);
+% Display the found central points
+disp('Found central points:');
+disp(central_points);
+
+
+
+
+
+
+
+% % Load the NIfTI image
+% nii = load_nii('00000389 - PF_upper_half.nii');
+% img = nii.img;
+% 
+% % Define the pixel size and radius for the ROI
+% %pixel_size_mm = 0.0607;  % Pixel size in millimeters
+% radius_mm = 5.5;         % Radius in millimeters
+% 
+% % Convert the radius from millimeters to pixels
+% radius_pixels = round(radius_mm / pixel_size_mm);  % Ensure the radius is an integer
+% 
+% % Get the size of the image stack
+% [image_height, image_width, num_slices] = size(img);
+% 
+% % Iterate over each central point and draw the solid circle across slices
+% for i = 1:size(central_points, 1)
+%     % Get the coordinates for the current point
+%     z_center = central_points(i, 3);  % Z-coordinate (slice index)
+%     y_center = central_points(i, 1);  % Y-coordinate
+%     x_center = central_points(i, 2);  % X-coordinate
+% 
+%     % Define the range of slices that the sphere spans
+%     z_min = max(1, round(z_center - radius_pixels));
+%     z_max = min(num_slices, round(z_center + radius_pixels));
+% 
+%     % Iterate over the slices in the z-axis that fall within the sphere's radius
+%     for z = z_min:z_max
+%         % Calculate the effective radius in the current slice
+%         effective_radius = sqrt(radius_pixels^2 - (z - z_center)^2);
+% 
+%         % Ensure effective_radius is a non-negative number
+%         if effective_radius > 0
+%             % Create a logical mask for the circle on the specific slice
+%             [X, Y] = meshgrid(1:image_width, 1:image_height);
+%             mask = (X - x_center).^2 + (Y - y_center).^2 <= effective_radius^2;
+% 
+%             % Apply the mask to the slice
+%             slice = img(:,:,z);  % Extract the specific slice
+%             slice(mask) = 255;  % Set the circle area to white
+% 
+%             % Replace the original slice with the updated slice
+%             img(:,:,z) = slice;
+%         end
+%     end
+% end
+% 
+% % Now use ShowVpxGUI to display the full image stack
+% ShowVpxGUI(img);
+ 
+clear img;
+clear nii;
+
+HRPQCT_scan     = load_nii('00000389 - PF_upper_half.nii');
+HRPQCT_Dim      = HRPQCT_scan.hdr.dime.pixdim(2:4);
+movingVolume    = HRPQCT_scan.img;
+
+
+PCCT_scan       = load_nii('FEMUR2_0CM_UHR_S2_HD_PF_lower_1_8_new.nii');
+PCCT_Dim        = PCCT_scan.hdr.dime.pixdim(2:4);
+fixedVolume     = PCCT_scan.img;
+%ShowVpxGUI(fixedVolume)
+%%%%%%%%%%%%%%%%%%%
+
+
+
+
+Transformation = [      0.995288 0.0174464 0.0953764 ;
+    0.0148635 -0.999505 0.0277252 ;
+    0.0958129 -0.0261769 -0.995055  ]; 
+
+Center = [-38.2106, -48.8331, 25.5243]';
+%Translation = [-32.91, -26.31, 4.02]';
+Translation = [-35.5, -25.79, 12.6]';
+
+
+
+
+% Load PCCT scan and set thresholds
+PCCT_scan = load_nii('FEMUR2_0CM_UHR_S2_HD_PF_lower_1_8_new.nii');
+PCCT_Dim = PCCT_scan.hdr.dime.pixdim(2:4);
+fixedVolume = PCCT_scan.img;
+
+
+% Define step size for threshold ranges
+step_size = 100;
+
+% Generate threshold ranges using step size
+lower_bounds = -800:step_size:400;
+upper_bounds = 500:step_size:1000;
+threshold_ranges = {};
+
+for lower = lower_bounds
+    for upper = upper_bounds
+        if upper > lower
+            threshold_ranges{end+1} = [lower, upper];
+        end
+    end
+end
+
+% Define edge length for the square ROI
+%edge_length_mm = 11;%%%%%%%%%%
+%edge_length_mm = 6;
+edge_length_mm = 6
+
+
+voxel_size_mm = PCCT_Dim(1);
+edge_length_voxels = round(edge_length_mm / voxel_size_mm);
+half_edge_length_voxels = floor(edge_length_voxels / 2);
+
+% Transform central points
+testPoint_World = central_points.' .* HRPQCT_Dim' .* [-1, -1, 1]';
+out = Transformation * (testPoint_World - Center) + Center + Translation;
+out_voxel = round(out ./ PCCT_Dim' .* [-1, -1, 1]');
+
+
+
+
+
+% Load the new PCCT scan
+PCCT_scan = load_nii('FEMUR2_0CM_UHR_S2_HD_PF_lower_1_8_new.nii');
+PCCT_Dim = PCCT_scan.hdr.dime.pixdim(2:4);  % Voxel dimensions for the new scan
+fixedVolume = PCCT_scan.img;
+
+% Define the radius for the ROI in millimeters
+%radius_mm = 5;  % Radius in millimeters %%%%%%%%%%%%
+
+radius_mm = 3;
+
+
+
+% Convert the radius from millimeters to pixels based on the new voxel size
+radius_pixels = round(radius_mm ./ PCCT_Dim);  % Convert to pixels in [y, x, z]
+
+% Initialize the original 3D volume for modification
+modifiedVolume = fixedVolume;
+
+% Iterate over each transformed voxel coordinate and draw the circles dynamically
+for i = 1:size(out_voxel, 2)
+    % Extract the voxel coordinates, keeping [y, x, z] order in mind
+    y_center = out_voxel(1, i);
+    x_center = out_voxel(2, i);
+    z_center = out_voxel(3, i);
+    
+    % Ensure coordinates are within bounds
+    if x_center > 0 && x_center <= size(fixedVolume, 2) && ...
+       y_center > 0 && y_center <= size(fixedVolume, 1) && ...
+       z_center > 0 && z_center <= size(fixedVolume, 3)
+       
+        % Define the range of slices that the sphere spans
+        z_min = max(1, round(z_center - radius_pixels(3)));
+        z_max = min(size(fixedVolume, 3), round(z_center + radius_pixels(3)));
+        
+        % Iterate over the slices in the z-axis within the sphere's radius
+        for z = z_min:z_max
+            % Calculate the effective radius in the current slice
+            effective_radius = sqrt(radius_pixels(3)^2 - (z - z_center)^2);
+            
+            if effective_radius > 0
+                % Create a logical mask for the circle on the specific slice
+                [X, Y] = meshgrid(1:size(fixedVolume, 2), 1:size(fixedVolume, 1));
+                mask = (X - x_center).^2 + (Y - y_center).^2 <= effective_radius^2;
+                
+                % Apply the mask to the slice (modifying the original volume)
+                slice = modifiedVolume(:,:,z);  % Extract the specific slice
+                slice(mask) = 2000;  % Set the circle area to white
+                modifiedVolume(:,:,z) = slice;
+                
+                % Add the index number as text at the center of the circle on the correct slice
+                text_position = [round(x_center), round(y_center)];
+                modifiedVolume(text_position(2), text_position(1), z) = 3000;  % Mark the center
+                
+                % Annotate the slice with the index number (red)
+                slice_with_text = insertText(slice, [x_center, y_center], num2str(i), ...
+                        'TextColor', 'red', 'FontSize', 18, 'BoxOpacity', 0, 'AnchorPoint', 'Center');
+                
+                % Convert slice back to the modified volume
+                modifiedVolume(:,:,z) = slice_with_text(:,:,1);
+            end
+        end
+    end
+end
+
+% Now use ShowVpxGUI to display the full image stack with the modified circles and indices
+ShowVpxGUI(modifiedVolume);
+
+
+
+
+
+
+
+
+% Load the new PCCT scan
+PCCT_scan = load_nii('FEMUR2_0CM_UHR_S2_HD_PF_lower_1_8_new.nii');
+PCCT_Dim = PCCT_scan.hdr.dime.pixdim(2:4);  % Voxel dimensions for the new scan
+fixedVolume = PCCT_scan.img;
+% Get dimensions of the fixed volume
+[dimY, dimX, dimZ] = size(fixedVolume);  % Changed order to y, x, z
+% Initialize showImg for visualization
+showImg = double(fixedVolume);
+% Create directory for saving ROIs and circles
+output_dir = 'bone1_ROI_circle_3mm_PF';   % ROI_circle4_5mm
+if ~exist(output_dir, 'dir')
+    mkdir(output_dir);
+end
+% Iterate over each threshold range
+for t = 1:length(threshold_ranges)
+    threshold = threshold_ranges{t};
+    
+    % Apply thresholds
+    fixedVolumeThresholded = fixedVolume;
+    fixedVolumeThresholded(fixedVolumeThresholded < threshold(1)) = threshold(1);
+    fixedVolumeThresholded(fixedVolumeThresholded > threshold(2)) = threshold(2);
+    
+    % Generate and save ROIs
+    for i = 1:size(out_voxel, 2)
+        y = out_voxel(1, i);  % Renamed to y for clarity
+        x = out_voxel(2, i);  % Renamed to x for clarity
+        z = out_voxel(3, i);
+        
+        % Ensure the square is within the bounds of the image
+        yRange = max(y - half_edge_length_voxels, 1):min(y + half_edge_length_voxels, dimY);
+        xRange = max(x - half_edge_length_voxels, 1):min(x + half_edge_length_voxels, dimX);
+        zRange = max(z - half_edge_length_voxels, 1):min(z + half_edge_length_voxels, dimZ);
+        
+        % Extract the ROI content and convert it to 8-bit
+        roi_content = fixedVolumeThresholded(yRange, xRange, zRange);  % Changed order to y, x, z
+        roi_content = uint8(255 * mat2gray(roi_content));  % Normalize and convert to 8-bit
+        
+        % Save the ROI content to a NIfTI file with a unique name
+        roiNii = make_nii(roi_content, [voxel_size_mm, voxel_size_mm, voxel_size_mm]);
+        save_nii(roiNii, fullfile(output_dir, sprintf('UHR_ROI_%d_threshold_%d_%d.nii', i, threshold(1), threshold(2))));
+        
+        % Add the mask to the image for visualization
+        showImg(yRange, xRange, zRange) = showImg(yRange, xRange, zRange) + double(roi_content);  % Changed order to y, x, z
+    end
+    
+    % Create and save single circle NIfTI file for each threshold
+    % Load the ROI file to get its dimensions and voxel size
+    nii_roi = load_nii(fullfile(output_dir, sprintf('UHR_ROI_1_threshold_%d_%d.nii', threshold(1), threshold(2))));
+    roi_img = nii_roi.img;
+    roi_size = size(roi_img);
+    voxel_size_mm = nii_roi.hdr.dime.pixdim(2);  % Assuming isotropic voxels
+    % Define the radius in millimeters
+    radius_mm = 3;
+    radius_voxels = round(radius_mm / voxel_size_mm);
+    % Create an empty volume with the same size as the ROI
+    circle_volume = zeros(roi_size);
+    % Calculate the center of the volume
+    center = ceil(roi_size / 2);
+    % Intensity for the circle
+    intensity = 3;  % Set the intensity value as needed
+    % Draw the circle - using ndgrid with y, x, z order
+    [Y, X, Z] = ndgrid(1:roi_size(1), 1:roi_size(2), 1:roi_size(3));  % Changed order to Y, X, Z
+    mask = (Y - center(1)).^2 + (X - center(2)).^2 + (Z - center(3)).^2 <= radius_voxels^2;
+    circle_volume(mask) = intensity;
+    % Convert circle volume to 8-bit if needed
+    circle_volume = uint8(255 * mat2gray(circle_volume));
+    % Create a NIfTI structure for the circle
+    circle_nii = make_nii(circle_volume, [voxel_size_mm, voxel_size_mm, voxel_size_mm]);
+    % Save the circle with a unique name for each threshold
+    save_nii(circle_nii, fullfile(output_dir, sprintf('Single_Circle_thresholdnew1_%d_%d.nii', threshold(1), threshold(2))));
+end
+
+
+
+
+
+
+
+
+central_pointsT = central_points';
+% Define the edge length in millimeters for the square ROI
+edge_length_mm = 6;
+voxel_size_mm = 0.0607;  % voxel size in millimeters per voxel
+
+% Convert the edge length from millimeters to voxels
+edge_length_voxels = round(edge_length_mm / voxel_size_mm);
+
+% Increase bounding box size by 50 voxels on each side
+additional_voxels = 50;
+
+% Get the dimensions of the moving volume
+[dimY, dimX, dimZ] = size(movingVolume);  % Changed to Y, X, Z order
+
+% Initialize the volume to display the ROIs
+showImg = double(movingVolume);  % Convert to double to avoid integer addition issues
+
+% Initialize a cell array to store the ROIs
+rois = {};
+
+% Add square ROIs to the volume
+for i = 1:size(central_pointsT, 2)
+    y = round(central_pointsT(1, i));  % First dimension is y
+    x = round(central_pointsT(2, i));  % Second dimension is x 
+    z = round(central_pointsT(3, i));  % Third dimension is z
+    
+    % Ensure the square is within the bounds of the image
+    yRange = max(round(y - edge_length_voxels / 2 - additional_voxels), 1):min(round(y + edge_length_voxels / 2 + additional_voxels), dimY);
+    xRange = max(round(x - edge_length_voxels / 2 - additional_voxels), 1):min(round(x + edge_length_voxels / 2 + additional_voxels), dimX);
+    zRange = max(round(z - edge_length_voxels / 2 - additional_voxels), 1):min(round(z + edge_length_voxels / 2 + additional_voxels), dimZ);
+    
+    % Extract the ROI content
+    roi_content = movingVolume(yRange, xRange, zRange);  % Changed to Y, X, Z order
+    
+    % Initialize binary ROI content
+    binary_roi_content = false(size(roi_content));
+    
+    % Create a binary mask for the square ROI
+    mask = true(size(roi_content));
+    
+    % Apply the mask to the ROI content
+    masked_roi_content = roi_content;
+    masked_roi_content(~mask) = 0;
+    
+    % Adjust contrast and apply Otsu's threshold for each slice
+    for sliceIdx = 1:size(masked_roi_content, 3)
+        slice = masked_roi_content(:, :, sliceIdx);
+        adjusted_slice = imadjust(slice);
+        threshold = graythresh(adjusted_slice) * max(adjusted_slice(:));
+        binary_roi_content(:, :, sliceIdx) = imbinarize(adjusted_slice, threshold);
+    end
+    
+    % Ensure no slice is completely filled with 255 values
+    for sliceIdx = 1:size(binary_roi_content, 3)
+        if all(binary_roi_content(:, :, sliceIdx), 'all')
+            binary_roi_content(:, :, sliceIdx) = false;
+        end
+    end
+    
+    % Store the binary ROI content
+    rois{i} = binary_roi_content;
+    
+    % Add the mask to the image for visualization
+    showImg(yRange, xRange, zRange) = showImg(yRange, xRange, zRange) + double(binary_roi_content) * 100000;  % Changed to Y, X, Z order
+end
+
+% Define the folder path where the ROIs will be saved
+roi_folder = 'bone1_hrpq_3mm_PF';  % roi_hrpq2_5mm
+
+% Create the folder if it doesn't exist
+if ~exist(roi_folder, 'dir')
+    mkdir(roi_folder);
+end
+
+% Save each ROI separately
+for i = 1:length(rois)
+    % Convert binary ROI content to uint8
+    binary_roi_uint8 = uint8(rois{i}) * 255;
+    
+    % Create a NIfTI structure for each ROI
+    roiNii = make_nii(binary_roi_uint8, [voxel_size_mm, voxel_size_mm, voxel_size_mm]);
+    
+    % Save the ROI in the folder
+    save_nii(roiNii, fullfile(roi_folder, sprintf('ROI_%d.nii', i)));
+end
+
+
+
+roi_file_path = fullfile(roi_folder, 'ROI_2.nii');
+nii_roi = load_nii(roi_file_path);
+roi_img = nii_roi.img;
+roi_size = size(roi_img);
+voxel_size_mm = nii_roi.hdr.dime.pixdim(2); 
+
+% Define the radii in millimeters
+radii_mm = [3, 3.607, 4.214]; 
+
+% Convert the radii from millimeters to voxels
+radii_voxels = round(radii_mm / voxel_size_mm);
+
+% Create an empty volume with the same size as the ROI
+circle_volume = zeros(roi_size);
+
+% Calculate the center of the volume
+center = ceil(roi_size / 2);
+
+% Intensities for the concentric circles (highest inside, lowest outside)
+intensities = [3, 2, 1];  % Different intensity values for different opacities
+
+% Draw the concentric circles with different intensities
+% Using Y, X, Z order for ndgrid to match MATLAB's standard indexing
+[Y, X, Z] = ndgrid(1:roi_size(1), 1:roi_size(2), 1:roi_size(3));
+previous_mask = false(roi_size);
+
+for i = 1:length(radii_voxels)
+    radius = radii_voxels(i);
+    mask = (Y - center(1)).^2 + (X - center(2)).^2 + (Z - center(3)).^2 <= radius^2 & ~previous_mask;
+    circle_volume(mask) = intensities(i);
+    previous_mask = previous_mask | mask;
+end
+
+% Create a NIfTI structure for the circles
+circle_nii = make_nii(circle_volume, [voxel_size_mm, voxel_size_mm, voxel_size_mm]);
+
+% Save the concentric circles in the folder
+save_nii(circle_nii, fullfile(roi_folder, 'Concentric_Circles_Extendednew1.nii'));
+img = circle_nii.img;
+%ShowVpxGUI(img);
+
+
+clearvars -except central_points;
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+addpath(genpath('..\\BoneMetricCalculationsPackage\\'));
+num = size(central_points, 1);
+% Define the directory containing the ROI files in the 'roi_hrpq' folder
+roiDir = 'bone1_hrpq_3mm_PF'; 
+
+% Create a folder to save individual ROI results
+%saveDir = 'saved_hrpq2_radius3_5mm';
+saveDir = 'saved_hrpq_bone1_3mm_PF';
+if ~exist(saveDir, 'dir')
+    mkdir(saveDir);
+end
+
+% Initialize a cell array to store the results
+results = cell(num + 1, 5);  % Since you have 14 ROIs, change the size accordingly
+results(1, :) = {'ROI_id', 'BvTv', 'Tb.Th', 'Tb.Sp', 'Tb.N'};
+
+% Loop through each ROI in the 'roi_hrpq' folder (from ROI_1.nii to ROI_14.nii)
+for i = 1:num
+
+    roiFilename = sprintf('ROI_%d.nii', i);
+    saveFilename = fullfile(saveDir, sprintf('ROI_%d_metrics.txt', i));
+    
+    % Check if the result for this ROI has already been saved
+    %if exist(saveFilename, 'file')
+    %    disp(['Skipping ROI_', num2str(i), ' as it is already processed.']);
+    %    continue;
+    %end
+    
+    % Define paths for the current ROI file and the concentric circles
+    SegmentationPath = fullfile(roiDir, roiFilename);
+    MaskPath = fullfile(roiDir, 'Concentric_Circles_Extendednew1.nii');  % Updated path for the concentric circles
+    ResultsDir = 'empty';  % Placeholder for the results directory if needed
+    
+    % Call the function to calculate metrics
+    CBCTdataMetricsParameters = matlabMetricsWholeBone(SegmentationPath, MaskPath, ResultsDir);
+    
+    % Extract the metrics from the returned data
+    metrics = strsplit(cell2mat(CBCTdataMetricsParameters(2)), ',');
+    
+    % Store the metrics in the results cell array
+    results{i + 1, 1} = roiFilename;
+    results{i + 1, 2} = str2double(metrics{3});  % BvTv
+    results{i + 1, 3} = str2double(metrics{4});  % Tb.Th
+    results{i + 1, 4} = str2double(metrics{5});  % Tb.Sp
+    results{i + 1, 5} = str2double(metrics{6});  % Tb.N
+    
+    % Save individual ROI results to a .txt file
+    fileID = fopen(saveFilename, 'w');
+    fprintf(fileID, 'BvTv: %f\n', str2double(metrics{3}));
+    fprintf(fileID, 'Tb.Th: %f\n', str2double(metrics{4}));
+    fprintf(fileID, 'Tb.Sp: %f\n', str2double(metrics{5}));
+    fprintf(fileID, 'Tb.N: %f\n', str2double(metrics{6}));
+    fclose(fileID);
+end
+
+% Convert the cell array to a table
+resultsTable = cell2table(results(2:end, :), 'VariableNames', results(1, :));
+
+% Save the results to a CSV file
+writetable(resultsTable, fullfile(saveDir, 'morphor_bone1_PF.csv'));   % morphor_newdata2.csv
+
+% Display a message when done
+disp('Metrics for all ROIs have been calculated and saved to morphor.csv');
+
+
+
+
+
