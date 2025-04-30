@@ -159,3 +159,163 @@ The code is designed to run sequentially. The main steps include:
 4. Adjust parameters as needed
 5. Run the script
 6. Review the output metrics in the resulting CSV file
+7. 
+
+
+
+
+# Texture Feature Extraction Pipeline
+
+This script (`texture_feat.py`) extracts GLCM and GLRLM texture features from a series of bone ROI NIfTI files using PyRadiomics. It loops through thresholded masks and corresponding images, computes features for each ROI, and saves the results for downstream analysis.
+
+---
+
+## Requirements
+
+- Python 3.7+
+- `pyradiomics`
+- `numpy`
+- `psutil`
+
+You can install dependencies with:
+
+```bash
+pip install pyradiomics numpy psutil
+```
+
+---
+
+## How to Run
+
+Run the script using Python:
+
+```bash
+python texture_feat.py
+```
+
+The script will process all ROI files across multiple thresholds and save the extracted features to disk.
+
+---
+
+## Directory Structure
+
+You should organize your data like this:
+
+```
+D:/d_users/Yuchen/HRPQCT_UHR_NR/071_F221272_HRPQCT/
+│
+├── bone4_ROI_circle_5mm/
+│   ├── UHR_ROI_1_threshold_...nii
+│   ├── Single_Circle_thresholdnew1_...nii
+│   └── ...
+```
+
+The script saves results under:
+
+```
+./bone4_text_5mm/
+├── {threshold}/
+│   ├── features_matrix.npy
+│   ├── feature_names.npy
+│   ├── features_UHR_ROI_1_....npy
+│   └── ...
+```
+
+---
+
+## Configurable Parameters
+
+All parameters are set at the top of the script. You can edit them as needed:
+
+### Feature Settings
+
+```python
+settings = {
+    'label': 255,
+    'binWidth': 1,
+    'force2D': 0,
+    'distances': [1, 2, 3, 4, 5],
+    'weightingNorm': 'no_weighting'
+}
+```
+
+You can modify which features to extract by changing:
+
+```python
+extractor.enableFeatureClassByName('glcm')
+extractor.enableFeatureClassByName('glrlm')
+```
+
+You can also add `'firstorder'`, `'shape'`, `'ngtdm'`, etc.
+
+---
+
+### Thresholds
+
+Change the threshold combinations here:
+
+```python
+i_values = range(-800, 401, 100)
+j_values = range(500, 1001, 100)
+```
+
+To test only a few specific thresholds:
+
+```python
+i_values = [400]
+j_values = [1000]
+```
+
+---
+
+### Input Paths
+
+The NIfTI image and mask paths are set here:
+
+```python
+imagePath = os.path.join('D:', 'd_users', 'Yuchen', 'HRPQCT_UHR_NR', '071_F221272_HRPQCT', 'bone4_ROI_circle_5mm', roi_file)
+maskPath = os.path.join('D:', 'd_users', 'Yuchen', 'HRPQCT_UHR_NR', '071_F221272_HRPQCT', 'bone4_ROI_circle_5mm', f'Single_Circle_thresholdnew1_{threshold}.nii')
+```
+
+Change these if your dataset is stored in a different location or folder.
+
+---
+
+### Output Directory
+
+Set where to store feature results:
+
+```python
+base_save_dir = 'bone4_text_5mm'
+```
+
+Each threshold will create a subfolder under this path.
+
+---
+
+## Output
+
+For each threshold combination:
+
+- `features_matrix.npy`: All ROI features in a single array
+- `feature_names.npy`: Feature name list
+- `features_UHR_ROI_{i}_...npy`: Feature vector per ROI
+
+---
+
+## Notes
+
+- Skips any ROI where image or mask is missing
+- Reuses saved `.npy` files if already computed
+- Frees memory with `gc.collect()` to reduce memory usage
+
+---
+
+## Example Output
+
+```bash
+Processing ROI_7 for threshold -600_800
+Saved features: features_UHR_ROI_7_threshold_-600_800.npy
+...
+Processing complete.
+```
